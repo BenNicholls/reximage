@@ -61,7 +61,7 @@ err := reximage.Export(image, "some_file_path.xp")
 
 If the file already exists it will be overwritten. If the export process fails Export will return an error.
 
-Complete(-ish) documentation can be found on [GoDoc.org](https://godoc.org/github.com/BenNicholls/reximage).
+Complete(-ish) documentation can be found on [GoDoc.org](https://godoc.org/github.com/bennicholls/reximage).
 
 ## Limitations
 
