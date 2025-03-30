@@ -87,6 +87,23 @@ func (cd CellData) ARGB() (fore, back uint32) {
 	return
 }
 
+// SetColoursRGBA sets the colours of the cell, interpreting the input uint32 colours in ARGB8888 format.
+// If background alpha is 0, the cell is set to undrawn. Foreground alpha is ignored.
+func (cd *CellData) SetColoursARGB(fore, back uint32) {
+	if uint8(back>>24) == 0 {
+		cd.B_b, cd.G_b, cd.R_b = 0xFF, 0, 0xFF
+		return
+	}
+
+	cd.B_f = uint8(fore & 0xFF)
+	cd.G_f = uint8((fore >> 8) & 0xFF)
+	cd.R_f = uint8((fore >> 16) & 0xFF)
+
+	cd.B_b = uint8(back & 0xFF)
+	cd.G_b = uint8((back >> 8) & 0xFF)
+	cd.R_b = uint8((back >> 16) & 0xFF)
+}
+
 // RGBA returns the foreground and background colours of the cell in RGBA format.
 // Alpha in this case is always set to maximum (255).
 func (cd CellData) RGBA() (fore, back uint32) {
@@ -101,6 +118,23 @@ func (cd CellData) RGBA() (fore, back uint32) {
 	back |= 0xFF //set alpha to 255
 
 	return
+}
+
+// SetColoursRGBA sets the colours of the cell, interpreting the input uint32 colours in RGBA8888 format.
+// If background alpha is 0, the cell is set to undrawn. Foreground alpha is ignored.
+func (cd *CellData) SetColoursRGBA(fore, back uint32) {
+	if uint8(back&0xFF) == 0 {
+		cd.R_b, cd.G_b, cd.B_b = 0xFF, 0, 0xFF
+		return
+	}
+
+	cd.B_f = uint8((fore >> 8) & 0xFF)
+	cd.G_f = uint8((fore >> 16) & 0xFF)
+	cd.R_f = uint8((fore >> 24) & 0xFF)
+
+	cd.B_b = uint8((back >> 8) & 0xFF)
+	cd.G_b = uint8((back >> 16) & 0xFF)
+	cd.R_b = uint8((back >> 24) & 0xFF)
 }
 
 // Undrawn returns whether the cell is "undrawn" or empty, which in XP files is identified by the background
@@ -180,6 +214,40 @@ func Import(path string) (image ImageData, err error) {
 			image.SetCell(i/image.Height, i%image.Height, c)
 		}
 	}
+
+	return
+}
+
+// Export encodes an image as an .xp file and writes to disk at the specified path. If a file already exists at that
+// location it is overwritten.
+func Export(image ImageData, path string) (err error) {
+	if !strings.HasSuffix(path, ".xp") {
+		path += ".xp"
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	imagebuffer := new(bytes.Buffer)
+	binary.Write(imagebuffer, binary.LittleEndian, int32(-1)) // version number
+	binary.Write(imagebuffer, binary.LittleEndian, uint32(1)) // number of layers
+	binary.Write(imagebuffer, binary.LittleEndian, uint32(image.Width))
+	binary.Write(imagebuffer, binary.LittleEndian, uint32(image.Height))
+
+	for x := range image.Width {
+		for y := range image.Height {
+			cell, _ := image.GetCell(x, y)
+			binary.Write(imagebuffer, binary.LittleEndian, cell)
+		}
+	}
+
+	zipper := gzip.NewWriter(f)
+	defer zipper.Close()
+
+	_, err = zipper.Write(imagebuffer.Bytes())
 
 	return
 }
