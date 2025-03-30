@@ -5,6 +5,7 @@
 package reximage
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/binary"
 	"errors"
@@ -19,14 +20,24 @@ type ImageData struct {
 	Cells  []CellData //will have Width*Height Elements
 }
 
+// Init initializes an image with the provided size, setting all cells to the REXPaint default.
+func (id *ImageData) Init(width, height int) {
+	id.Width = width
+	id.Height = height
+	id.Cells = make([]CellData, width*height)
+	for i := range id.Cells {
+		id.Cells[i].Clear()
+	}
+}
+
 // GetCell returns the CellData at coordinate (x, y) of the decoded image, with (0,0) at the top-left of the image.
 func (id ImageData) GetCell(x, y int) (cd CellData, err error) {
-	if id.Cells == nil || len(id.Cells) == 0 {
+	if len(id.Cells) == 0 {
 		err = errors.New("Image has no data.")
 		return
 	}
 
-	if x >= id.Width || y >= id.Height || x+y*id.Width > len(id.Cells) {
+	if x >= id.Width || y >= id.Height || x < 0 || y < 0 {
 		err = errors.New("x, y coordinates out of bounds.")
 		return
 	}
@@ -34,6 +45,18 @@ func (id ImageData) GetCell(x, y int) (cd CellData, err error) {
 	cd = id.Cells[x+y*id.Width]
 
 	return
+}
+
+// SetCell sets the cell at (x, y) to cell. (0, 0) is considered to be the top-left of the image, with positive y
+// values moving down.
+func (id *ImageData) SetCell(x, y int, cell CellData) (err error) {
+	if x >= id.Width || y >= id.Height || x < 0 || y < 0 {
+		return errors.New("x, y coordinates out of bounds.")
+	}
+
+	id.Cells[x+y*id.Width] = cell
+
+	return nil
 }
 
 // CellData holds the decoded data for a single cell. Colours are split into uint8 components so the user can combine
@@ -86,6 +109,14 @@ func (cd CellData) Undrawn() bool {
 	return cd.R_b == 255 && cd.G_b == 0 && cd.B_b == 255
 }
 
+// Clear removes the cell's glyph and sets the cell's colours to the rexpaint default. A cleared cell will be considered
+// undrawn.
+func (cd *CellData) Clear() {
+	cd.Glyph = 0
+	cd.R_b, cd.G_b, cd.B_b = 0xFF, 0, 0xFF
+	cd.R_f, cd.G_f, cd.B_f = 0, 0, 0
+}
+
 // Import imports an image from the xp file at the provided path. Returns the Imagedata and an error. If an error is
 // present, ImageData will be no good.
 func Import(path string) (image ImageData, err error) {
@@ -107,6 +138,7 @@ func Import(path string) (image ImageData, err error) {
 	if err != nil {
 		return
 	}
+	defer data.Close()
 
 	//read rexpaint version num and the number of layers
 	var version int32
@@ -125,18 +157,17 @@ func Import(path string) (image ImageData, err error) {
 		return
 	}
 
-	image.Width, image.Height = int(w), int(h)
-	image.Cells = make([]CellData, image.Width*image.Height)
+	image.Init(int(w), int(h))
 
 	//read layers, painting from lowest layer to highest
-	for layer := 0; layer < int(numLayers); layer++ {
+	for layer := range int(numLayers) {
 		if layer != 0 {
 			//if reading subsequent layers, throw away the dimension bytes since we've already read them before
 			err = binary.Read(data, binary.LittleEndian, &w)
 			err = binary.Read(data, binary.LittleEndian, &h)
 		}
 
-		for i := 0; i < image.Width*image.Height; i++ {
+		for i := range image.Width * image.Height {
 			//read bytes for each cell.
 			c := CellData{}
 			err = binary.Read(data, binary.LittleEndian, &c)
@@ -146,8 +177,7 @@ func Import(path string) (image ImageData, err error) {
 
 			//xp images are encoded in the totally insane column-major order for some reason, we correct that here
 			//(sorry Kyzrati, gotta put my foot down on this one)
-			x, y := i/image.Height, i%image.Height
-			image.Cells[y*image.Width+x] = c
+			image.SetCell(i/image.Height, i%image.Height, c)
 		}
 	}
 
