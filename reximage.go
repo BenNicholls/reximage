@@ -209,6 +209,11 @@ func Import(path string) (image ImageData, err error) {
 				return
 			}
 
+			//skip drawing this cell if bgcolour = (255, 0, 255), which rexpaints uses to indicate undrawn cells
+			if c.Undrawn() {
+				continue
+			}
+
 			//xp images are encoded in the totally insane column-major order for some reason, we correct that here
 			//(sorry Kyzrati, gotta put my foot down on this one)
 			image.SetCell(i/image.Height, i%image.Height, c)
